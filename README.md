@@ -1,40 +1,21 @@
 # 2026 MMDL — MMMU Baseline Evaluation
 
-Baseline evaluation project for **Qwen3-VL-4B-Instruct** on the **MMMU validation split**.
+이 저장소는 제공된 Assignment Guidance와 Submission Template에 맞춰 구성합니다.
 
-## Assignment target
+## 제출 위치
 
-The final submission follows the provided `SUBMISSION_TEMPLATE.md` and must be written at:
+- 최종 보고서: `reports/mmmu_baseline.md`
+- 원본 템플릿: `SUBMISSION_TEMPLATE.md`
+- 과제 지침 사본: `docs/assignment_guidance.md`
 
-- `reports/mmmu_baseline.md`
-
-The final baseline run must use:
+## 고정 평가 스펙
 
 - Model: `Qwen/Qwen3-VL-4B-Instruct`
 - Model revision: `ebb281ec70b05090aa6165b016eac8ec08e71b17`
+- dtype: BF16 / repository default, no quantization
 - Dataset: `MMMU/MMMU`
 - Dataset revision: `98e6ac0cb9b7b2cd2c991b85a50762edc4aedc68`
 - Split: `validation`
-- All 30 subject configs, 30 samples each, 900 samples total
-- Model dtype: BF16 / repository default (no quantization)
+- 30 subject configs × 30 samples = 900 samples
 
-## Repository layout
-
-```text
-.
-├─ README.md
-├─ SUBMISSION_TEMPLATE.md
-├─ docs/
-│  └─ assignment_guidance.md
-├─ reports/
-│  └─ mmmu_baseline.md
-├─ evaluation/
-├─ scripts/
-└─ results/
-```
-
-Evaluation code, one-command reproduction scripts, exact dependencies, and final results will be added under the corresponding directories.
-
-## Important
-
-Preliminary smoke tests or subsampled runs are engineering checks only. The submitted score must come from the complete 900-sample MMMU validation evaluation under the fixed assignment specification.
+평가 스크립트와 재현 커맨드는 최종적으로 같은 저장소에 포함합니다.
