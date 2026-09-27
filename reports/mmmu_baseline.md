@@ -3,7 +3,7 @@
 - **팀명**: 8조
 - **팀원**: 우성한, 김소리, 이든솔, 함우림
 - **작성일**: 2026년 9월 28일
-- **재현 커맨드**: `(예: bash scripts/run_mmmu_eval.sh)`
+- **재현 커맨드**: `pip install -r scripts/requirements.txt && python scripts/run_mmmu_eval.py --output_path results/mmmu_results.json`
 
 ---
 
@@ -129,4 +129,5 @@ Answer the question using a single word or phrase, without additional explanatio
 
 - 초기 파일럿(`max_new_tokens=128`, 정규식 기반 자체 파서)에서는 응답 잘림과 파싱 실패로 인한 오채점이 다수 관찰되어, MMMU 공식 파서/프롬프트로 교체하고 생성 예산을 재조정하는 과정을 거쳤음 (3.2절 참고)
 - peak VRAM을 실측하지 못함 — 재실행 시 `torch.cuda.max_memory_allocated()` 추가 예정
-- 주관식(open-ended) 채점의 부분 문자열 매칭 방식이 실제 정답을 과소평가할 가능성 있음 (7절 참고), 시간 관계상 수동 재검증은 진행하지 못함
+- 주관식(open-ended) 채점의 부분 문자열 매칭 방식이 실제 정답을 과소평가할 가능성 있음 (7절 참고).
+- `requirements.txt`는 Colab Pro(A100) 런타임을 그대로 freeze한 것으로, 코랩 외 환경에서는 `google-colab` 등 일부 코랩 전용 패키지가 설치되지 않을 수 있음. 핵심 의존성(`torch`, `transformers`, `datasets`, `accelerate`, `pillow`)만 별도로 설치해도 재현 가능함.
