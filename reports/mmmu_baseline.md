@@ -15,6 +15,7 @@
 | 항목 | 값 |
 |---|---|
 | 모델 checkpoint | `Qwen/Qwen3-VL-4B-Instruct` (ebb281ec70b05090aa6165b016eac8ec08e71b17) |
+| Python | 3.13 (Colab 런타임) |
 | dtype | `dtype="auto"` (리포지토리 기본값 BF16), 양자화 없음 |
 | 데이터셋 | `MMMU/MMMU` (98e6ac0cb9b7b2cd2c991b85a50762edc4aedc68), validation split, 30개 과목 config × 30문제 = 900문제, 서브샘플링 없음 |
 | 추론 백엔드 | Hugging Face `transformers` (`Qwen3VLForConditionalGeneration`), transformers는 GitHub 커밋 `07338b6c74a578868368e6e549dea83414e4b8cb`로 고정 |
@@ -140,4 +141,4 @@ Answer the question using a single word or phrase, without additional explanatio
 - 결과는 단일 실행(seed 42)이며 반복 실행에 따른 분산은 측정하지 않았다.
 - peak VRAM을 측정하지 못했다.
 - 주관식(open-ended) 채점의 부분 문자열 매칭 방식이 실제 정답을 과소평가할 가능성이 있다 (7번 참고).
-- `scripts/requirements.txt`는 Colab 런타임 전체를 `pip freeze`한 것이라 `google-colab` 등 Colab 전용 패키지가 포함되어 있어 다른 환경에서는 그대로 설치되지 않을 수 있다. 이를 위해 핵심 6개 패키지만 담은 `scripts/requirements-minimal.txt`를 함께 제공하며, 이 파일로 새 환경에서 설치·실행하는 테스트는 수행하지 못했다.
+- `scripts/requirements.txt`는 Colab 런타임 전체를 `pip freeze`한 것이라 `google-colab` 등 Colab 전용 패키지가 포함되어 있어 다른 환경에서는 그대로 설치되지 않을 수 있다. 이를 위해 핵심 6개 패키지만 담은 `scripts/requirements-minimal.txt`를 함께 제공한다. 이 파일로 새 가상환경(Colab GPU 런타임, 미리 설치된 패키지 없음)을 만들어 `--limit_per_subject 2` 스모크 테스트(60문제)를 끝까지 실행해 정상 동작을 확인했으며, 전체 900문제 재실행은 수행하지 않았다. 이 파일은 6개 핵심 패키지만 고정하므로 numpy, pandas 등 간접 의존성과 PyTorch의 CUDA 빌드는 고정되지 않는다. 실제로 새 환경에는 `torch 2.11.0+cu130`이 설치되었고(원래 실행 환경은 `2.11.0+cu128`), GPU 인식은 정상이었다.
