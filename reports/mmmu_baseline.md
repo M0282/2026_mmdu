@@ -3,7 +3,10 @@
 - **팀명**: 8조
 - **팀원**: 우성한, 김소리, 이든솔, 함우림
 - **작성일**: 2026년 9월 28일
-- **재현 커맨드**: `pip install -r scripts/requirements.txt && python scripts/run_mmmu_eval.py --output_path results/mmmu_results.json`
+- **재현 커맨드**:
+  1. 환경 설치: `pip install -r scripts/requirements-minimal.txt`
+  2. 평가 실행: `python scripts/run_mmmu_eval.py --model_path Qwen/Qwen3-VL-4B-Instruct --data_root MMMU/MMMU --output_path results/mmmu_results.json`
+  - 다른 체크포인트를 평가하려면 `--model_path`만 바꾸면 된다 (로컬 fine-tune 체크포인트로 실행해보는 것은 아직 확인하지 않음).
 
 ---
 
@@ -12,32 +15,35 @@
 | 항목 | 값 |
 |---|---|
 | 모델 checkpoint | `Qwen/Qwen3-VL-4B-Instruct` (ebb281ec70b05090aa6165b016eac8ec08e71b17) |
-| 추론 백엔드 | Hugging Face `transformers` (GitHub main 브랜치 설치, `Qwen3VLForConditionalGeneration` 클래스 사용 — 정식 pip 배포 전 버전이라 정확한 버전 태그 대신 `requirements.txt`에 설치 시점 커밋 기록) |
-| 사용 GPU | NVIDIA A100-SXM4-40GB (Colab Pro) |
-| 실측 peak VRAM | 미측정 (`torch.cuda.max_memory_allocated()` 로깅을 추가하지 않음 — 한계로 8번에 기록) |
+| dtype | `dtype="auto"` (리포지토리 기본값 BF16), 양자화 없음 |
+| 데이터셋 | `MMMU/MMMU` (98e6ac0cb9b7b2cd2c991b85a50762edc4aedc68), validation split, 30개 과목 config × 30문제 = 900문제, 서브샘플링 없음 |
+| 추론 백엔드 | Hugging Face `transformers` (`Qwen3VLForConditionalGeneration`), transformers는 GitHub 커밋 `07338b6c74a578868368e6e549dea83414e4b8cb`로 고정 |
+| 백엔드 선택 이유 | Qwen 모델카드의 공식 사용 예시가 transformers 기반이며, `presence_penalty`를 포함한 공식 sampling recipe를 커스텀 `LogitsProcessor`로 그대로 재현할 수 있어 선택함. 문제를 배치 없이 순차 처리했으나 응답이 짧아 900문제가 약 8분에 끝났으므로 vLLM 등 별도 서빙 프레임워크는 사용하지 않음 |
+| 사용 GPU | NVIDIA A100-SXM4-40GB (Google Colab Pro) |
+| 실측 peak VRAM | 미측정 (VRAM 로깅을 추가하지 않음, 8번 참고). 참고로 BF16 가중치의 다운로드 크기는 약 8.9GB임 |
 | 총 소요 시간 | 487.4초 (약 8.1분) / 900문제 |
-| 의존성 | `requirements.txt` (`pip freeze` 결과, `scripts/` 참고) |
-| 실행 커맨드 | ```bash\npython scripts/run_mmmu_eval.py \\\n    --model_path Qwen/Qwen3-VL-4B-Instruct \\\n    --data_root MMMU/MMMU \\\n    --output_path results/mmmu_results.json\n``` |
+| 의존성 | `scripts/requirements-minimal.txt` (핵심 6개 패키지), `scripts/requirements.txt` (Colab 런타임 전체 `pip freeze`) |
+| 실행 커맨드 | `python scripts/run_mmmu_eval.py --model_path Qwen/Qwen3-VL-4B-Instruct --data_root MMMU/MMMU --output_path results/mmmu_results.json` (모델은 HF repo id 또는 로컬 경로, 데이터는 HF dataset repo id를 인자로 받으며 절대경로는 코드에 하드코딩하지 않음) |
 
 ## 2. 프롬프트
 
-**실제 모델에 들어간 프롬프트 전문** (변수 부분은 `{}`로 표시):
+**실제 모델에 들어간 프롬프트 전문** (변수 부분은 `{}`로 표시). 이미지는 `image_1`~`image_7` 중 존재하는 것을 텍스트 앞에 순서대로 배치함.
 
-객관식(multiple-choice) 문제:
+```
+[객관식 문제]
 {question}
 (A) {option_A}
 (B) {option_B}
-(C) {option_C}
-(D) {option_D}
+...
 Answer with the option's letter from the given choices directly, without additional explanation.
 
-주관식(open-ended) 문제 (선택지가 없는 경우):
+[주관식(open-ended) 문제: 선택지가 없는 경우]
 {question}
 Answer the question using a single word or phrase, without additional explanation.
+```
 
-
-- **출처**: MMMU 공식 GitHub repo(`MMMU-Benchmark/MMMU`)의 `eval/data_utils.py`에 있는 `construct_prompt` 함수 형식을 그대로 이식 (https://github.com/MMMU-Benchmark/MMMU/blob/main/eval/data_utils.py)
-- **선택 이유**: 공식 벤치마크 평가 스크립트와 동일한 프롬프트 형식을 사용해야, 우리가 측정한 정확도를 공식 발표 수치(67.4)와 같은 조건에서 비교할 수 있기 때문. 자체 설계 프롬프트를 쓰면 성능 차이가 "모델 성능 문제"인지 "프롬프트 문제"인지 구분할 수 없게 됨. 마지막의 "without additional explanation" 문구는 공식 템플릿에 없는 부분으로, 실행 시간 제약상 모델이 장황한 풀이과정을 쓰지 않고 바로 답을 내도록 유도하기 위해 추가함.
+- **출처**: MMMU 공식 evaluation 코드(https://github.com/MMMU-Benchmark/MMMU)의 zero-shot 프롬프트 구성 방식(질문, 괄호 표기 선택지, 선택지 문자로 바로 답하라는 지시문)을 따름. 단, 각 지시문 끝의 `without additional explanation`은 우리가 추가한 문구이며 공식 형식에는 없음.
+- **선택 이유**: 공식 평가 코드와 같은 형식을 따라야 공식 수치(67.4)와의 비교 조건을 최대한 맞출 수 있기 때문. 추가한 문구는 초기 실행(`max_new_tokens=768`)에서 문제당 약 30초가 걸려 900문제 완료까지 약 8시간이 예상되었기 때문에, 풀이 과정 없이 답만 출력하도록 유도해 실행 시간을 줄이려는 목적으로 넣음. 이 변경이 정확도에 영향을 주었을 가능성은 7번에서 다룸.
 
 ## 3. 생성(Decoding) 설정
 
@@ -51,29 +57,31 @@ Answer the question using a single word or phrase, without additional explanatio
 | `top_k` | `20` |
 | `repetition_penalty` | `1.0` |
 | `presence_penalty` | `1.5` |
-| `seed` | `42` |
+| `seed` | `42` (`torch.manual_seed`를 실행 시작 시 1회 설정, 파서의 무작위 fallback용 `random.seed(42)`는 별도) |
 
-- **출처**: Qwen 공식 HuggingFace 모델카드(`huggingface.co/Qwen/Qwen3-VL-4B-Instruct`) "Generation Hyperparameters > VL" 섹션에 명시된 값을 그대로 사용. `presence_penalty`는 `transformers.generate()`가 기본 지원하지 않는 파라미터라, 커스텀 `LogitsProcessor`(생성된 토큰 중 이미 등장한 토큰에 고정 페널티 부여)를 직접 구현해서 공식 recipe를 그대로 재현함.
+- **출처**: Qwen 공식 모델카드 https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct 의 Generation Hyperparameters > VL 섹션 (`greedy=false`, `top_p=0.8`, `top_k=20`, `temperature=0.7`, `repetition_penalty=1.0`, `presence_penalty=1.5`). 같은 섹션의 `out_seq_length=16384`는 따르지 않고 `max_new_tokens=512`를 사용함 (3.2 참고).
+- **구현 참고**: `transformers.generate()`는 `presence_penalty`를 기본 제공하지 않아, 생성된 토큰 중 한 번이라도 등장한 토큰의 logit에서 고정값(1.5)을 빼는 커스텀 `LogitsProcessor`를 구현함. EOS 토큰은 페널티 대상에서 제외함(EOS가 페널티를 받으면 생성 종료가 억제될 수 있기 때문).
 
 ### 3.2 생성 예산 / 이미지 해상도
 
 | 파라미터 | 값 |
 |---|---|
 | `max_new_tokens` | `512` |
-| 이미지 해상도 처리 (`min_pixels`/`max_pixels` 등) | `min_pixels=256*28*28`(약 20만 px), `max_pixels=1280*28*28`(약 100만 px) |
+| 이미지 해상도 처리 (`min_pixels`/`max_pixels` 등) | `min_pixels=256*28*28` (200,704), `max_pixels=1280*28*28` (1,003,520) |
 
-**선택 근거**: 초기 파일럿(`max_new_tokens=128`)에서는 계산 문제(Accounting 등) 풀이 도중 응답이 잘리는 사례가 발견되어 예산을 늘릴 필요가 있었음. 반면 `768`까지 늘리자 모델이 매 문제마다 장황한 풀이 과정을 서술하며 예산을 거의 다 소진해 문제당 30초 이상, 900문제 기준 약 8시간이 소요될 것으로 추정되어 비현실적이었음. 이에 프롬프트에 "without additional explanation" 지시문을 추가해 모델이 풀이 과정 없이 바로 답하도록 유도하고, `max_new_tokens`는 512로 재조정함. 그 결과 900문제를 487초(약 8분)에 완료했으며, 응답 잘림 없이 정상적으로 답변이 수집됨을 확인함.
+**선택 근거**: 초기 파일럿(`max_new_tokens=128`)에서는 계산 문제 풀이 도중 응답이 잘리는 사례가 관찰되었다. 이후 `max_new_tokens=768`로 실행했을 때 초기 3문제 기준 문제당 약 30초가 걸려 900문제 완료까지 약 8시간이 예상되었다. 이에 프롬프트에 `without additional explanation` 지시문을 추가하고 `max_new_tokens`를 512로 낮춰 재실행했으며, 900문제를 487초에 완료했다. 두 가지를 동시에 변경했기 때문에 속도 개선이 각각 어느 변경에서 기인했는지는 분리하지 못했다. 최종 실행에서도 1건(`validation_Math_13`)은 512토큰 상한에서 응답이 문장 중간에 잘렸다.
 
+이미지 해상도는 표·그래프·수식이 포함된 이미지가 많은 MMMU 특성상 과도하게 줄이면 숫자·기호 정보가 손실될 수 있고, 상한을 두지 않으면 VRAM과 처리 시간 부담이 커지므로 두 요소를 절충해 정했다. 이 값에 대한 별도 비교 실험은 수행하지 않았다.
 
 ## 4. 채점(파싱) 방식
 
-- 사용한 파서/로직: MMMU 공식 GitHub repo(`MMMU-Benchmark/MMMU`)의 `eval/eval_utils.py`에 있는 `parse_multi_choice_response`(객관식용), `parse_open_response` + `eval_open`(주관식용) 그대로 이식
+- 사용한 파서/로직: MMMU 공식 evaluation 코드의 `parse_multi_choice_response`(객관식), `parse_open_response` + `eval_open`(주관식)을 기반으로 이식함. 출처: https://github.com/MMMU-Benchmark/MMMU/blob/bb0b95a945998d91dfef37e969e07d49d1139438/mmmu/utils/eval_utils.py
 - 동작 방식 요약:
-  - MMMU는 객관식과 주관식(open-ended) 문제가 섞여 있어, `options` 필드 유무로 먼저 유형을 구분함
-  - **객관식**: ① 응답에서 `(A)`처럼 괄호로 감싼 선택지 문자를 우선 탐색 → ② 없으면 괄호 없이 단독으로 등장하는 문자 탐색 → ③ 그래도 없으면 선택지 텍스트 자체가 응답에 언급됐는지 탐색 → ④ 후보가 여러 개면 응답에서 가장 마지막에 등장한 것을 채택 → ⑤ 그래도 못 찾으면 랜덤 선택(seed 고정)
-  - **주관식**: 응답 문장에서 "so", "therefore", "answer" 등 결론을 나타내는 단서 뒤의 구절을 추출하고, 숫자 형태면 정규화해서 정답과 비교 (부분 문자열 포함 여부로 판정)
+  - MMMU에는 객관식과 주관식(open-ended)이 섞여 있어, `options` 필드가 비어 있는지 여부로 유형을 먼저 구분함
+  - **객관식**: ① 응답에서 `(A)`처럼 괄호로 감싼 선택지 문자를 탐색 → ② 없으면 괄호 없이 단독으로 등장하는 문자를 탐색 → ③ 그래도 없으면 응답이 5단어를 넘을 때 선택지 텍스트 자체가 응답에 포함되는지 탐색 → ④ 후보가 여러 개면 응답에서 가장 마지막에 등장한 것을 채택 → ⑤ 후보가 없으면 선택지 중 무작위 선택(seed 고정)
+  - **주관식**: 응답에서 결론을 나타내는 단서(`so`, `therefore`, `answer` 등) 뒤의 구절과 숫자를 추출·정규화한 뒤, 정답 문자열이 포함되는지(숫자는 일치하는지)로 판정
 
-**검증**: 전체 오답 433건 중 객관식 388건을 전수 확인한 결과, 파서가 답을 전혀 추출하지 못해 원문이 그대로 남은 "진짜 파싱 실패" 사례는 0건이었다. 즉 객관식 오답은 모두 파서가 유효한 선택지(A/B/C/D 등)를 정상적으로 추출했으나 정답과 달랐던 경우로, 측정 도구의 결함이 아닌 모델의 실제 추론 오류로 판단된다. 다만 주관식(45건)은 부분 문자열 매칭 방식의 특성상 단위·서술 방식 차이로 인한 과소평가 가능성이 남아있어 7번 섹션에서 별도로 논의함.
+**검증**: 객관식 오답 388건에 대해 위 ⑤의 무작위 fallback 경로(①~③ 중 어느 것도 응답에서 찾지 못한 경우)에 해당하는 건이 있는지 재현해 확인했고, 해당 사례는 0건이었다. 즉 모든 객관식 오답에서 파서가 응답 내 선택지를 추출한 뒤 정답과 비교한 결과가 오답이었다. 다만 정답 처리된 응답은 결과 파일에 저장되지 않아 같은 검증을 하지 못했다. 주관식 오답 45건은 부분 문자열 매칭 특성상 표기 차이로 인한 과소평가 가능성이 남는다.
 
 ## 5. 결과
 
@@ -111,7 +119,7 @@ Answer the question using a single word or phrase, without additional explanatio
 | 30 | Sociology | 30 | 63.33% |
 | | **Overall (macro avg)** | **900** | **51.89%** |
 
-계산식: `Overall = mean(30개 과목 accuracy)` (json의 `subject_accuracy`와 동일)
+계산식: `Overall = mean(30개 과목 accuracy)`. 과목당 문제 수가 30개로 같아 전체 900문제 중 467문제 정답(467/900)의 비율과 같다.
 
 ## 6. 공식 수치와의 비교
 
@@ -123,11 +131,13 @@ Answer the question using a single word or phrase, without additional explanatio
 
 ## 7. 격차 분석
 
-과목별 정확도를 보면 격차의 원인이 명확한 패턴을 보인다. 화학(26.7%), 기계공학(30.0%), 건축/공학(36.7%), 진단검사의학(36.7%), 재무(36.7%) 등 **계산·수치 추론이 필요한 과목**은 정확도가 크게 낮은 반면, 약학(70.0%), 심리학(70.0%), 미술이론(80.0%), 디자인(80.0%), 문학(80.0%) 등 **개념·언어 기반 과목**은 상대적으로 높은 정확도를 보였다. 이는 격차의 상당 부분이 측정 방식(프롬프트/파싱)의 결함이 아니라, 4B 규모 모델이 화학식·회로도·재무제표 등 복잡한 시각적 수치 정보를 정확히 읽고 다단계 계산을 수행하는 능력이 제한적이라는 실제 모델 한계에서 기인함을 시사한다. 실제 오답 사례(예: Chemistry에서 이성질체 명칭을 혼동, Accounting에서 계산 결과값 자체가 틀림)도 파싱 실패가 아닌 순수한 추론 오류였다. 다만 주관식(open-ended) 문제는 전체 오답 433건 중 45건을 차지했는데, 이 유형은 부분 문자열 일치로 채점하므로 단위 표기나 서술 방식 차이로 실제 정답이 오답 처리됐을 가능성을 배제할 수 없어 추가 검증이 필요하다.
+종합 정확도는 51.89%로 공식 수치(67.4)보다 15.51%p 낮았다. 과목별로는 화학(26.7%), 기계공학(30.0%), 건축/공학·진단검사의학·재무(각 36.7%) 등 계산·수치 판독이 필요한 과목이 낮았고, 문학·디자인·미술이론(각 80.0%) 등 개념 중심 과목이 높았다. 가장 유력한 원인은 우리가 추가한 "without additional explanation" 지시문과 생성 길이 상한이다. 오답 응답 길이의 중앙값이 8자일 만큼 모델은 풀이 없이 선택지만 출력했고, 모델카드 권장 출력 길이(out_seq_length=16384)와 달리 max_new_tokens를 512로 제한했다. 단계별 계산이 필요한 과목일수록 영향이 클 것으로 추정되나, 프롬프트를 바꾼 대조 실험을 하지 않았으므로 이는 검증된 결론이 아닌 가설이다. 측정 오류 가능성은 낮다: 객관식 오답 388건 중 파서의 무작위 fallback 사례는 0건이었다. 그 밖의 후보로 공식 수치의 평가 프롬프트를 알 수 없다는 점, 4B 모델의 시각 수치 판독 한계, 주관식 45건의 부분 문자열 채점, 단일 시드 실행의 분산이 있으나 분리 검증하지 못했다. 계산 중심 과목에서 풀이를 허용한 프롬프트와 비교하면 원인을 구분할 수 있다.
 
 ## 8. 기타 특이사항 / 한계 (Optional)
 
-- 초기 파일럿(`max_new_tokens=128`, 정규식 기반 자체 파서)에서는 응답 잘림과 파싱 실패로 인한 오채점이 다수 관찰되어, MMMU 공식 파서/프롬프트로 교체하고 생성 예산을 재조정하는 과정을 거쳤음 (3.2절 참고)
-- peak VRAM을 실측하지 못함 — 재실행 시 `torch.cuda.max_memory_allocated()` 추가 예정
-- 주관식(open-ended) 채점의 부분 문자열 매칭 방식이 실제 정답을 과소평가할 가능성 있음 (7절 참고).
-- `requirements.txt`는 Colab Pro(A100) 런타임을 그대로 freeze한 것으로, 코랩 외 환경에서는 `google-colab` 등 일부 코랩 전용 패키지가 설치되지 않을 수 있음. 핵심 의존성(`torch`, `transformers`, `datasets`, `accelerate`, `pillow`)만 별도로 설치해도 재현 가능함.
+- 초기 파일럿(`max_new_tokens=128`, 정규식 기반 자체 파서)에서는 응답 잘림과, 정답을 오답으로 채점한 사례(12건 이상 확인)가 관찰되어 MMMU 공식 파서와 프롬프트 형식으로 교체하고 생성 예산을 재조정했다 (3.2 참고).
+- 프롬프트 지시문(`without additional explanation`)과 `max_new_tokens`의 영향을 분리하는 대조 실험은 수행하지 않았다. 최종 실행에서 1건(`validation_Math_13`)의 응답이 512토큰 상한에서 잘렸다.
+- 결과는 단일 실행(seed 42)이며 반복 실행에 따른 분산은 측정하지 않았다.
+- peak VRAM을 측정하지 못했다.
+- 주관식(open-ended) 채점의 부분 문자열 매칭 방식이 실제 정답을 과소평가할 가능성이 있다 (7번 참고).
+- `scripts/requirements.txt`는 Colab 런타임 전체를 `pip freeze`한 것이라 `google-colab` 등 Colab 전용 패키지가 포함되어 있어 다른 환경에서는 그대로 설치되지 않을 수 있다. 이를 위해 핵심 6개 패키지만 담은 `scripts/requirements-minimal.txt`를 함께 제공하며, 이 파일로 새 환경에서 설치·실행하는 테스트는 수행하지 못했다.
