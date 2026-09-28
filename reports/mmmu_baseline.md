@@ -122,6 +122,44 @@ Answer the question using a single word or phrase, without additional explanatio
 
 계산식: `Overall = mean(30개 과목 accuracy)`. 과목당 문제 수가 30개로 같아 전체 900문제 중 467문제 정답(467/900)의 비율과 같다.
 
+### 과목별 소요 시간
+
+| No. | Subject | 소요 시간(초) |
+|---|---|---|
+| 1 | Accounting | 16.8 |
+| 2 | Agriculture | 16.8 |
+| 3 | Architecture_and_Engineering | 16.7 |
+| 4 | Art | 11.7 |
+| 5 | Art_Theory | 10.9 |
+| 6 | Basic_Medical_Science | 10.4 |
+| 7 | Biology | 10.8 |
+| 8 | Chemistry | 11.3 |
+| 9 | Clinical_Medicine | 11.5 |
+| 10 | Computer_Science | 12.4 |
+| 11 | Design | 10.5 |
+| 12 | Diagnostics_and_Laboratory_Medicine | 11.5 |
+| 13 | Economics | 14.6 |
+| 14 | Electronics | 14.5 |
+| 15 | Energy_and_Power | 14.5 |
+| 16 | Finance | 14.7 |
+| 17 | Geography | 8.6 |
+| 18 | History | 13.8 |
+| 19 | Literature | 9.6 |
+| 20 | Manage | 8.8 |
+| 21 | Marketing | 10.8 |
+| 22 | Materials | 16.4 |
+| 23 | Math | 115.7 |
+| 24 | Mechanical_Engineering | 18.1 |
+| 25 | Music | 7.7 |
+| 26 | Pharmacy | 11.6 |
+| 27 | Physics | 10.4 |
+| 28 | Psychology | 10.7 |
+| 29 | Public_Health | 12.9 |
+| 30 | Sociology | 10.0 |
+| | **과목별 합계** | **474.7** |
+
+총 소요 시간은 487.4초이며, 과목별 시간의 합(474.7초)과의 차이는 과목별 측정 밖의 시간으로 추정한다. Math만 115.7초로 다른 과목(7.7~18.1초)보다 길었으며, 512토큰 상한까지 생성된 응답(`validation_Math_13`)이 있었던 것이 원인으로 추정되나 확인하지는 않았다.
+
 ## 6. 공식 수치와의 비교
 
 | | Overall (MMMU val) |
@@ -132,7 +170,9 @@ Answer the question using a single word or phrase, without additional explanatio
 
 ## 7. 격차 분석
 
-종합 정확도는 51.89%로 공식 수치(67.4)보다 15.51%p 낮았다. 과목별로는 화학(26.7%), 기계공학(30.0%), 건축/공학·진단검사의학·재무(각 36.7%) 등 계산·수치 판독이 필요한 과목이 낮았고, 문학·디자인·미술이론(각 80.0%) 등 개념 중심 과목이 높았다. 가장 유력한 원인은 우리가 추가한 "without additional explanation" 지시문과 생성 길이 상한이다. 오답 응답 길이의 중앙값이 8자일 만큼 모델은 풀이 없이 선택지만 출력했고, 모델카드 권장 출력 길이(out_seq_length=16384)와 달리 max_new_tokens를 512로 제한했다. 단계별 계산이 필요한 과목일수록 영향이 클 것으로 추정되나, 프롬프트를 바꾼 대조 실험을 하지 않았으므로 이는 검증된 결론이 아닌 가설이다. 측정 오류 가능성은 낮다: 객관식 오답 388건 중 파서의 무작위 fallback 사례는 0건이었다. 그 밖의 후보로 공식 수치의 평가 프롬프트를 알 수 없다는 점, 4B 모델의 시각 수치 판독 한계, 주관식 45건의 부분 문자열 채점, 단일 시드 실행의 분산이 있으나 분리 검증하지 못했다. 계산 중심 과목에서 풀이를 허용한 프롬프트와 비교하면 원인을 구분할 수 있다.
+종합 정확도는 51.89%로 공식 수치(67.4%)보다 15.51%p 낮았다. 과목별로는 화학(26.67%), 기계공학(30.00%), 건축·공학, 진단검사의학, 재무(각 36.67%)의 정확도가 낮았고, 문학·디자인·미술이론(각 80.00%)은 높았다. 이러한 차이가 발생한 원인으로는 프롬프트에 추가한 without additional explanation 지시문, 공식 평가와의 세부 조건 차이(모델카드 권장 출력 길이 out_seq_length=16384 대비 max_new_tokens=512 등), 이미지 내 수치·기호 판독 및 계산 과정의 오류 등을 고려할 수 있다. 특히 오답 응답 길이의 중앙값이 8자로, 많은 경우 풀이 과정 없이 짧은 답을 출력했다. 다만 풀이를 허용한 조건과 직접 비교하지 않았으므로 짧은 응답이 낮은 정확도의 원인인지, 틀린 문제에서 나타난 특징인지는 아직 판단할 수 없다.
+
+max_new_tokens=512에 도달해 응답이 잘린 사례는 확인된 범위에서 1건(validation_Math_13)이므로, 생성 길이 제한만으로 전체 정확도 차이를 설명하기는 어렵다. 채점 오류 가능성은 낮다: 객관식 오답 388건 중 파서의 무작위 fallback 사례는 0건이었다. 그 밖에 주관식 45건의 부분 문자열 채점, 4B 모델의 한계, 단일 시드 실행의 분산은 분리 검증하지 못했다. 계산 중심 과목에서 풀이를 허용한 프롬프트로 비교하면 원인을 구분할 수 있다.
 
 ## 8. 기타 특이사항 / 한계 (Optional)
 
