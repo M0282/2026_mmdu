@@ -11,8 +11,8 @@ MMMU validation baseline evaluation for Qwen3-VL-4B-Instruct.
     PresencePenaltyLogitsProcessor로 직접 구현해서 recipe를 그대로 지켰음 (아래 클래스 참고).
 - 파싱(채점) 로직: MMMU 공식 repo(github.com/MMMU-Benchmark/MMMU, eval/eval_utils.py)의
   parse_multi_choice_response / parse_open_response / eval_multi_choice / eval_open 그대로 이식.
-  (객관식과 주관식(open-ended) 문제가 섞여 있으므로 반드시 분리해서 채점해야 함 — MMMU는
-  question_type 필드로 이를 구분함)
+  (객관식과 주관식(open-ended) 문제가 섞여 있어, options 필드가 비어 있는지 여부로 유형을
+  구분하고 유형별 채점 함수를 적용한다.)
 
 사용법 (한 커맨드로 재현):
     python run_mmmu_eval.py \
@@ -65,9 +65,8 @@ class PresencePenaltyLogitsProcessor(LogitsProcessor):
     등장한 토큰이면 등장 횟수와 무관하게 고정 페널티를 적용.
     transformers.generate()에는 이 파라미터가 기본 내장되어 있지 않아 직접 구현함
     (repetition_penalty는 곱셈 기반이라 의미가 다름).
-    단, EOS 토큰은 페널티 대상에서 제외한다 — 안 그러면 모델이 답변을 끝내려고
-    EOS를 낼 때마다 페널티를 맞아서 생성을 못 끝내고 max_new_tokens까지 계속
-    채우는 문제가 생길 수 있다 (실제로 관찰됨)."""
+    단, EOS 토큰은 페널티 대상에서 제외한다. EOS가 페널티를 받으면 생성 종료가
+    억제되어 max_new_tokens까지 채워질 수 있기 때문이다."""
 
     def __init__(self, penalty: float, prompt_len: int, eos_token_ids):
         self.penalty = penalty
@@ -302,14 +301,13 @@ def main():
     ap.add_argument("--data_revision", default=DATA_REVISION)
     ap.add_argument("--output_path", default="outputs/mmmu_results.json")
     ap.add_argument("--max_new_tokens", type=int, default=512,
-                     help="속도/VRAM과 응답 잘림 사이의 트레이드오프. 실행시간 제약상 512로 설정하고, "
-                          "프롬프트에 'without additional explanation' 문구를 추가해 장황한 풀이과정 "
-                          "생성을 줄여 잘림 위험을 낮춤.")
+                     help="생성 길이 상한. 실행 시간과 응답 잘림 사이의 절충값. "
+                          "프롬프트에는 'without additional explanation' 지시문이 포함되어 있다.")
     ap.add_argument("--limit_per_subject", type=int, default=0, help="0이면 과목당 30문제 전체")
     ap.add_argument("--min_pixels", type=int, default=256 * 28 * 28,
-                     help="이미지 최소 픽셀 수. 너무 낮으면 작은 아이콘성 이미지가 과도하게 확대돼 노이즈 발생.")
+                     help="이미지 최소 픽셀 수 (processor의 min_pixels).")
     ap.add_argument("--max_pixels", type=int, default=1280 * 28 * 28,
-                     help="이미지 최대 픽셀 수. MMMU의 표/그래프/수식 디테일 보존과 VRAM/속도 트레이드오프 절충값.")
+                     help="이미지 최대 픽셀 수 (processor의 max_pixels). 디테일 보존과 VRAM/속도의 절충값.")
     ap.add_argument("--no_resume", action="store_true",
                      help="output_path에 이전 중간저장 결과가 있어도 무시하고 처음부터 다시 실행")
     # parse_known_args: 코랩/주피터 커널이 자체적으로 넘기는 `-f <kernel>.json` 같은
@@ -365,11 +363,10 @@ def main():
         args.model_path, revision=args.model_revision, dtype="auto", device_map="auto"
     )
     # 이미지 해상도(min_pixels/max_pixels) 명시적 지정.
-    # 근거: MMMU는 표/그래프/수식이 포함된 이미지가 많아 과도한 다운스케일 시 숫자·기호가
-    # 뭉개져 답이 틀릴 위험이 큼. 반면 무제한으로 두면 Colab A100 40GB에서 900문제를
-    # 처리하는 동안 VRAM/속도 부담이 커짐. 절충으로 min=256*28*28(약 20만 px, 너무 작은
-    # 아이콘성 이미지 방지), max=1280*28*28(약 100만 px, 원본 대부분을 보존하면서 극단적으로
-    # 큰 이미지의 처리 비용만 제한)로 설정.
+    # 근거: MMMU에는 표/그래프/수식이 포함된 이미지가 많아 과도하게 줄이면 숫자·기호
+    # 정보가 손실될 수 있고, 상한을 두지 않으면 VRAM/속도 부담이 커진다. 이 두 가지를
+    # 절충해 min_pixels=256*28*28, max_pixels=1280*28*28로 설정했다.
+    # (이 값에 대한 별도 ablation은 수행하지 않았다.)
     processor = AutoProcessor.from_pretrained(
         args.model_path, revision=args.model_revision,
         min_pixels=args.min_pixels, max_pixels=args.max_pixels,
